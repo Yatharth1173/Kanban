@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from './hooks/useAuth';
+import { useBoardShare } from './hooks/useBoardShare';
 import { useTasks } from './hooks/useTasks';
 import { useTeamMembers } from './hooks/useTeamMembers';
 import { useLabels } from './hooks/useLabels';
@@ -24,6 +25,15 @@ const DEFAULT_FILTERS: BoardFilters = {
 export default function App() {
   const { user, loading: authLoading, error: authError } = useAuth();
   const {
+    boardUserId,
+    shareUrl,
+    isSharedView,
+    resolving: shareResolving,
+    shareError,
+    copied,
+    copyShareLink,
+  } = useBoardShare(user?.id);
+  const {
     tasks,
     loading: tasksLoading,
     error: tasksError,
@@ -34,21 +44,25 @@ export default function App() {
     setAssignees,
     setLabels,
     refresh,
-  } = useTasks(user?.id);
-  const { members, addMember, removeMember } = useTeamMembers(user?.id);
-  const { labels } = useLabels(user?.id);
+  } = useTasks(boardUserId, user?.id);
+  const { members, addMember, removeMember } = useTeamMembers(boardUserId);
+  const { labels } = useLabels(boardUserId);
 
   const [showCreate, setShowCreate] = useState(false);
   const [showTeam, setShowTeam] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [filters, setFilters] = useState<BoardFilters>(DEFAULT_FILTERS);
 
-  if (authLoading || tasksLoading) {
+  if (authLoading || shareResolving || tasksLoading) {
     return <LoadingState />;
   }
 
   if (authError) {
     return <ErrorState message={authError} onRetry={() => window.location.reload()} />;
+  }
+
+  if (shareError) {
+    return <ErrorState message={shareError} onRetry={() => { window.location.href = '/'; }} />;
   }
 
   if (tasksError) {
@@ -75,6 +89,10 @@ export default function App() {
           onCreateTask={() => setShowCreate(true)}
           onToggleTeam={() => setShowTeam((v) => !v)}
           showTeam={showTeam}
+          isSharedView={isSharedView}
+          shareUrl={shareUrl}
+          copied={copied}
+          onCopyShareLink={() => { void copyShareLink(); }}
         />
 
         <div className="mt-6 space-y-4">

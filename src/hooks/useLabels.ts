@@ -8,15 +8,16 @@ const DEFAULT_LABELS = [
   { name: 'Design', color: '#a855f7' },
 ];
 
-export function useLabels(userId: string | undefined) {
+export function useLabels(boardUserId: string | undefined) {
   const [labels, setLabels] = useState<Label[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    if (!userId) return;
+    if (!boardUserId) return;
     const { data, error } = await supabase
       .from('labels')
       .select('*')
+      .eq('user_id', boardUserId)
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -27,24 +28,24 @@ export function useLabels(userId: string | undefined) {
     if (!data?.length) {
       const { data: created } = await supabase
         .from('labels')
-        .insert(DEFAULT_LABELS.map((l) => ({ ...l, user_id: userId })))
+        .insert(DEFAULT_LABELS.map((l) => ({ ...l, user_id: boardUserId })))
         .select();
       setLabels(created ?? []);
     } else {
       setLabels(data);
     }
     setLoading(false);
-  }, [userId]);
+  }, [boardUserId]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   const addLabel = async (name: string, color: string) => {
-    if (!userId) return;
+    if (!boardUserId) return;
     const { data, error } = await supabase
       .from('labels')
-      .insert({ user_id: userId, name, color })
+      .insert({ user_id: boardUserId, name, color })
       .select()
       .single();
     if (error) throw error;

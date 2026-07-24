@@ -21,10 +21,11 @@ interface UpdateTaskInput {
   position?: number;
 }
 
-async function fetchTasksWithRelations(): Promise<Task[]> {
+async function fetchTasksWithRelations(boardUserId: string): Promise<Task[]> {
   const { data: tasks, error } = await supabase
     .from('tasks')
     .select('*')
+    .eq('user_id', boardUserId)
     .order('position', { ascending: true });
 
   if (error) throw error;
@@ -70,33 +71,33 @@ async function logActivity(
   });
 }
 
-export function useTasks(userId: string | undefined) {
+export function useTasks(boardUserId: string | undefined, authUserId: string | undefined) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!userId) {
+    if (!boardUserId) {
       setLoading(false);
       return;
     }
     try {
       setError(null);
-      const data = await fetchTasksWithRelations();
+      const data = await fetchTasksWithRelations(boardUserId);
       setTasks(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tasks');
     } finally {
       setLoading(false);
     }
-  }, [userId]);
+  }, [boardUserId]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   const createTask = async (input: CreateTaskInput) => {
-    if (!userId) return;
+    if (!boardUserId || !authUserId) return;
 
     const status = input.status ?? 'todo';
     const statusTasks = tasks.filter((t) => t.status === status);
@@ -105,7 +106,7 @@ export function useTasks(userId: string | undefined) {
     const { data: task, error: createError } = await supabase
       .from('tasks')
       .insert({
-        user_id: userId,
+        user_id: boardUserId,
         title: input.title,
         description: input.description ?? null,
         priority: input.priority ?? 'normal',
@@ -130,13 +131,13 @@ export function useTasks(userId: string | undefined) {
       );
     }
 
-    await logActivity(task.id, userId, 'created', { title: task.title });
+    await logActivity(task.id, authUserId, 'created', { title: task.title });
     await load();
     return task;
   };
 
   const updateTask = async (taskId: string, input: UpdateTaskInput) => {
-    if (!userId) return;
+    if (!authUserId) return;
 
     const existing = tasks.find((t) => t.id === taskId);
     if (!existing) return;
@@ -149,19 +150,19 @@ export function useTasks(userId: string | undefined) {
     if (updateError) throw updateError;
 
     if (input.status && input.status !== existing.status) {
-      await logActivity(taskId, userId, 'status_changed', {
+      await logActivity(taskId, authUserId, 'status_changed', {
         from: existing.status,
         to: input.status,
       });
     } else if (input.title || input.description !== undefined || input.priority || input.due_date !== undefined) {
-      await logActivity(taskId, userId, 'updated', input as Record<string, unknown>);
+      await logActivity(taskId, authUserId, 'updated', input as Record<string, unknown>);
     }
 
     await load();
   };
 
   const moveTask = async (taskId: string, newStatus: TaskStatus, newPosition: number) => {
-    if (!userId) return;
+    if (!authUserId) return;
 
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
@@ -195,7 +196,7 @@ export function useTasks(userId: string | undefined) {
       );
 
       if (oldStatus !== newStatus) {
-        await logActivity(taskId, userId, 'status_changed', { from: oldStatus, to: newStatus });
+        await logActivity(taskId, authUserId, 'status_changed', { from: oldStatus, to: newStatus });
       }
     } catch (err) {
       await load();
@@ -210,7 +211,7 @@ export function useTasks(userId: string | undefined) {
   };
 
   const setAssignees = async (taskId: string, assigneeIds: string[]) => {
-    if (!userId) return;
+    if (!authUserId) return;
 
     await supabase.from('task_assignees').delete().eq('task_id', taskId);
     if (assigneeIds.length) {
@@ -218,12 +219,12 @@ export function useTasks(userId: string | undefined) {
         assigneeIds.map((id) => ({ task_id: taskId, team_member_id: id })),
       );
     }
-    await logActivity(taskId, userId, 'assignees_changed', { assigneeIds });
+    await logActivity(taskId, authUserId, 'assignees_changed', { assigneeIds });
     await load();
   };
 
   const setLabels = async (taskId: string, labelIds: string[]) => {
-    if (!userId) return;
+    if (!authUserId) return;
 
     await supabase.from('task_labels').delete().eq('task_id', taskId);
     if (labelIds.length) {
@@ -231,7 +232,7 @@ export function useTasks(userId: string | undefined) {
         labelIds.map((id) => ({ task_id: taskId, label_id: id })),
       );
     }
-    await logActivity(taskId, userId, 'labels_changed', { labelIds });
+    await logActivity(taskId, authUserId, 'labels_changed', { labelIds });
     await load();
   };
 
